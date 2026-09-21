@@ -11,65 +11,45 @@ jobs:
 
     steps:
 
-      # 1. Checkout repository
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Clone repository
+        run: |
+          git clone https://github.com/${{ github.repository }}.git .
+          git checkout ${{ github.sha }}
 
-      # 2. Login to DockerHub
       - name: Login to DockerHub
         run: |
-          echo "${{ secrets.DOC_PWD }}" | docker login \
-            -u "${{ secrets.DOC_USERNAME }}" \
-            --password-stdin
+          echo "${{ secrets.DOC_PWD }}" | \
+          docker login -u "${{ secrets.DOC_USERNAME }}" --password-stdin
 
-      # 3. Build Docker image
       - name: Build Docker image
         run: |
           docker build \
             -t ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest .
 
-      # 4. Push Docker image
       - name: Push Docker image
         run: |
           docker push \
             ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
 
-      # 5. Check EC2 secrets
-      - name: Check EC2 configuration
-        run: |
-          echo "EC2_USERNAME set: ${{ secrets.EC2_USERNAME != '' }}"
-          echo "EC2_HOST set: ${{ secrets.EC2_HOST != '' }}"
-          echo "KEY set: ${{ secrets.KEY != '' }}"
-
-      # 6. Deploy to EC2
       - name: Deploy to EC2
         run: |
           echo "${{ secrets.KEY }}" > private_key.pem
           chmod 600 private_key.pem
 
-          ssh \
-            -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=30 \
+          ssh -o StrictHostKeyChecking=no \
             -i private_key.pem \
-            "${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}" << 'EOF'
-
-          echo "Connected to EC2"
-
-          # Install Docker if it is not installed
-          if ! command -v docker >/dev/null 2>&1
+            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'EOF'
+          if ! command -v docker &> /dev/null
           then
             echo "Installing Docker..."
 
             sudo dnf install -y docker
-            sudo systemctl enable --now docker
+            sudo systemctl start docker
+            sudo systemctl enable docker
           fi
 
-          echo "Docker version:"
-          sudo docker --version
-
-          echo "Logging into DockerHub..."
-
-          echo "${{ secrets.DOC_PWD }}" | sudo docker login \
+          echo "${{ secrets.DOC_PWD }}" | \
+            sudo docker login \
             -u "${{ secrets.DOC_USERNAME }}" \
             --password-stdin
 
