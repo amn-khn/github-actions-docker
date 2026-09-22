@@ -79,11 +79,15 @@ jobs:
           KUBE_CONFIG: ${{ secrets.KILLERCODA_SSH_KEY }}
 
         run: |
-          mkdir -p ~/.kube
+          mkdir -p $HOME/.kube
 
           printf '%s' "$KILLERCODA_SSH_KEY" > ~/.kube/config
+          cat<<EOF>> $HOME/.kube/config
+          ${{secrets.KILLERCODA_SSH_KEY}}
+          EOF
+          
 
-          chmod 600 ~/.kube/config
+          chmod 600 $HOME/.kube/config
 
 
       # --------------------------------------------------------
