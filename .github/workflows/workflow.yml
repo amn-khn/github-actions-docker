@@ -21,26 +21,24 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t makdev85/githubactions:latest .
+          docker build -t amxnkhxn/githubactions:latest .
 
       - name: Push Docker Image
         run: |
-          docker push makdev85/githubactions:latest
+          docker push amxnkhxn/githubactions:latest
 
   deploy-kubernetes:
     needs: build
     runs-on: self-hosted
 
     steps:
-      - name: Verify Kubernetes Cluster
+      - name: Check Kubernetes Cluster
         run: kubectl get nodes
 
-      - name: Update Deployment Image
+      - name: Deploy Latest Image
         run: |
-          kubectl set image deployment/cicd-app cicd-app=makdev85/githubactions:latest
+          kubectl set image deployment/cicd-app \
+            cicd-app=amxnkhxn/githubactions:latest
 
-      - name: Restart Deployment
-        run: kubectl rollout restart deployment/cicd-app
-
-      - name: Wait for Rollout
-        run: kubectl rollout status deployment/cicd-app
+          kubectl rollout restart deployment/cicd-app
+          kubectl rollout status deployment/cicd-app
