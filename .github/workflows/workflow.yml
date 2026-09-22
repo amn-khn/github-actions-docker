@@ -22,11 +22,11 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t makdev85/svgcicd:latest .
+          docker build -t makdev85/github-actions-docker:latest .
 
       - name: Push Docker image
         run: |
-          docker push makdev85/svgcicd:latest
+          docker push makdev85/github-actions-docker:latest
 
 
   deploy-kubernetes:
@@ -41,7 +41,7 @@ jobs:
       - name: Deploy to Kubernetes
         run: |
           kubectl set image deployment/cicd-app \
-            cicd-app=makdev85/svgcicd:latest
+            cicd-app=makdev85/github-actions-docker:latest
 
           kubectl rollout restart deployment/cicd-app
 
