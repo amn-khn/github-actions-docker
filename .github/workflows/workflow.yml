@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,15 +27,16 @@ jobs:
         run: |
           docker push amxnkhxn/githubactions:latest
 
-  deploy-kubernetes:
-    needs: build
-    runs-on: self-hosted
+      - name: Configure Kubernetes
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
 
-    steps:
-      - name: Check Kubernetes Cluster
+      - name: Verify Cluster
         run: kubectl get nodes
 
-      - name: Deploy Latest Image
+      - name: Deploy to Kubernetes
         run: |
           kubectl set image deployment/cicd-app \
             cicd-app=amxnkhxn/githubactions:latest
