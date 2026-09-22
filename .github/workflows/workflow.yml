@@ -6,34 +6,36 @@ on:
       - main
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Clone repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Login to DockerHub
+      - name: Login to Docker Hub
         run: |
           echo "${{ secrets.DOC_PWD }}" | docker login \
-          -u "${{ secrets.DOC_USERNAME }}" --password-stdin
+            -u "${{ secrets.DOC_USERNAME }}" --password-stdin
 
-      - name: Build Docker image
+      - name: Build Docker Image
         run: |
           docker build -t ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest .
 
-      - name: Push Docker image
+      - name: Push Docker Image
         run: |
           docker push ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
 
-      - name: Deploy to Kubernetes (Killercoda)
+      - name: Setup SSH Key
         run: |
-          echo "${{ secrets.KILLERCODA_SSH_KEY }}" > killercoda.pem
-          chmod 600 killercoda.pem
+          mkdir -p ~/.ssh
+          echo "${{ secrets.KILLERCODA_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.KILLERCODA_HOST }} >> ~/.ssh/known_hosts
 
-          ssh -o StrictHostKeyChecking=no \
-            -i killercoda.pem \
-            root@${{ secrets.KILLERCODA_HOST }} << EOF
+      - name: Deploy to Killercoda Kubernetes
+        run: |
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes root@${{ secrets.KILLERCODA_HOST }} << 'EOF'
 
           docker login -u "${{ secrets.DOC_USERNAME }}" -p "${{ secrets.DOC_PWD }}"
           docker pull ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
@@ -50,5 +52,3 @@ jobs:
           kubectl rollout status deployment/github-actions-docker
 
           EOF
-
-          rm -f killercoda.pem
