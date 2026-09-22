@@ -113,7 +113,7 @@ jobs:
       # --------------------------------------------------------
       - name: Update Application Image
         run: |
-          kubectl set image deployment/cici-app \
+          kubectl set image deployment/cicd-app \
             my-app=${{ secrets.DOC_USERNAME }}/githubactions:${{ github.sha }}
 
 
