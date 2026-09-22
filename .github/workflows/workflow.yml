@@ -10,71 +10,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Clone repository
-        run: |
-          git clone https://github.com/${{ github.repository }}.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Login to DockerHub
         run: |
-          echo "${{ secrets.DOC_PWD }}" | \
-          docker login -u "${{ secrets.DOC_USERNAME }}" --password-stdin
+          echo "${{ secrets.DOC_PWD }}" | docker login \
+          -u "${{ secrets.DOC_USERNAME }}" --password-stdin
 
       - name: Build Docker image
         run: |
-          docker build \
-            -t ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest .
+          docker build -t ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest .
 
       - name: Push Docker image
         run: |
-          docker push \
-            ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
+          docker push ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
 
-      - name: Deploy to EC2
+      - name: Deploy to Kubernetes (Killercoda)
         run: |
-          echo "${{ secrets.KEY }}" > private_key.pem
-          chmod 600 private_key.pem
+          echo "${{ secrets.KILLERCODA_SSH_KEY }}" > killercoda.pem
+          chmod 600 killercoda.pem
 
           ssh -o StrictHostKeyChecking=no \
-            -i private_key.pem \
-            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'EOF'
-          if ! command -v docker &> /dev/null
-          then
-            echo "Installing Docker..."
+            -i killercoda.pem \
+            root@${{ secrets.KILLERCODA_HOST }} << EOF
 
-            sudo dnf install -y docker
-            sudo systemctl start docker
-            sudo systemctl enable docker
-          fi
+          docker login -u "${{ secrets.DOC_USERNAME }}" -p "${{ secrets.DOC_PWD }}"
+          docker pull ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
 
-          echo "${{ secrets.DOC_PWD }}" | \
-            sudo docker login \
-            -u "${{ secrets.DOC_USERNAME }}" \
-            --password-stdin
+          kubectl delete deployment github-actions-docker --ignore-not-found=true
+          kubectl delete service github-actions-docker --ignore-not-found=true
 
-          echo "Pulling latest image..."
+          kubectl create deployment github-actions-docker \
+            --image=${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
 
-          sudo docker pull \
-            ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
+          kubectl expose deployment github-actions-docker \
+            --type=NodePort --port=80 --target-port=80
 
-          echo "Stopping old container..."
-
-          sudo docker stop github-actions-docker || true
-
-          echo "Removing old container..."
-
-          sudo docker rm github-actions-docker || true
-
-          echo "Starting new container..."
-
-          sudo docker run -d \
-            --name github-actions-docker \
-            -p 80:80 \
-            ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
-
-          echo "Deployment completed!"
+          kubectl rollout status deployment/github-actions-docker
 
           EOF
 
-          rm -f private_key.pem
+          rm -f killercoda.pem
