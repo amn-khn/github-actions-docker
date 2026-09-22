@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout Repository
@@ -26,29 +26,43 @@ jobs:
         run: |
           docker push ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
 
-      - name: Setup SSH Key
+      - name: Deploy to Kubernetes
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.KILLERCODA_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.KILLERCODA_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Deploy to Killercoda Kubernetes
-        run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes root@${{ secrets.KILLERCODA_HOST }} << 'EOF'
-
-          docker login -u "${{ secrets.DOC_USERNAME }}" -p "${{ secrets.DOC_PWD }}"
           docker pull ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
 
-          kubectl delete deployment github-actions-docker --ignore-not-found=true
-          kubectl delete service github-actions-docker --ignore-not-found=true
-
-          kubectl create deployment github-actions-docker \
-            --image=${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
-
-          kubectl expose deployment github-actions-docker \
-            --type=NodePort --port=80 --target-port=80
+          kubectl apply -f - <<EOF
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: github-actions-docker
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: github-actions-docker
+            template:
+              metadata:
+                labels:
+                  app: github-actions-docker
+              spec:
+                containers:
+                - name: app
+                  image: ${{ secrets.DOC_USERNAME }}/github-actions-docker:latest
+                  ports:
+                  - containerPort: 80
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: github-actions-docker
+          spec:
+            type: NodePort
+            selector:
+              app: github-actions-docker
+            ports:
+            - port: 80
+              targetPort: 80
+              nodePort: 30080
+          EOF
 
           kubectl rollout status deployment/github-actions-docker
-
-          EOF
