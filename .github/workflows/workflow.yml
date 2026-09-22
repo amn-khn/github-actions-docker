@@ -1,4 +1,4 @@
-name: Docker Kubernetes CI/CD
+name: Kubernetes CI/CD Pipeline
 
 on:
   push:
@@ -6,12 +6,11 @@ on:
       - main
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Login to Docker Hub
@@ -20,29 +19,28 @@ jobs:
           username: ${{ secrets.DOC_USERNAME }}
           password: ${{ secrets.DOC_PWD }}
 
-      - name: Build Docker image
+      - name: Build Docker Image
         run: |
-          docker build -t makdev85/github-actions-docker:latest .
+          docker build -t makdev85/githubactions:latest .
 
-      - name: Push Docker image
+      - name: Push Docker Image
         run: |
-          docker push makdev85/github-actions-docker:latest
-
+          docker push makdev85/githubactions:latest
 
   deploy-kubernetes:
     needs: build
     runs-on: self-hosted
 
     steps:
-      - name: Check Kubernetes cluster
+      - name: Verify Kubernetes Cluster
+        run: kubectl get nodes
+
+      - name: Update Deployment Image
         run: |
-          kubectl get nodes
+          kubectl set image deployment/cicd-app cicd-app=makdev85/githubactions:latest
 
-      - name: Deploy to Kubernetes
-        run: |
-          kubectl set image deployment/cicd-app \
-            cicd-app=makdev85/github-actions-docker:latest
+      - name: Restart Deployment
+        run: kubectl rollout restart deployment/cicd-app
 
-          kubectl rollout restart deployment/cicd-app
-
-          kubectl rollout status deployment/cicd-app
+      - name: Wait for Rollout
+        run: kubectl rollout status deployment/cicd-app
