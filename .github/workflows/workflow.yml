@@ -1,17 +1,28 @@
-name: Kubernetes CI/CD Pipeline
+name: CI-CD
 
 on:
   push:
     branches:
       - main
 
+  workflow_dispatch:
+
 jobs:
-  build-and-deploy:
-    runs-on: self-hosted
+
+  # ============================================================
+  # CI - BUILD AND PUSH
+  # ============================================================
+  build-and-push:
+
+    name: CI - Build and Push
+
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+
+      - name: Checkout
         uses: actions/checkout@v4
+
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -19,27 +30,102 @@ jobs:
           username: ${{ secrets.DOC_USERNAME }}
           password: ${{ secrets.DOC_PWD }}
 
+
       - name: Build Docker Image
         run: |
-          docker build -t amxnkhxn/githubactions:latest .
+          docker build \
+            -t ${{ secrets.DOC_USERNAME }}/githubactions:latest \
+            -t ${{ secrets.DOC_USERNAME }}/githubactions:${{ github.sha }} \
+            .
 
-      - name: Push Docker Image
+
+      - name: Push Docker Images
         run: |
-          docker push amxnkhxn/githubactions:latest
+          docker push ${{ secrets.DOC_USERNAME }}/githubactions:latest
+          docker push ${{ secrets.DOC_USERNAME }}/githubactions:${{ github.sha }}
 
+
+  # ============================================================
+  # CD - DEPLOY TO KUBERNETES
+  # ============================================================
+  deploy:
+
+    name: CD - Deploy to Kubernetes
+
+    needs: build-and-push
+
+    runs-on: self-hosted
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+      # --------------------------------------------------------
+      # Install kubectl
+      # --------------------------------------------------------
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+
+      # --------------------------------------------------------
+      # Configure kubeconfig
+      # --------------------------------------------------------
       - name: Configure Kubernetes
+        env:
+          KUBE_CONFIG: ${{ secrets.KILLERCODA_SSH_KEY }}
+
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KILLERCODA_SSH_KEY }}" > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
+          mkdir -p ~/.kube
 
-      - name: Verify Cluster
-        run: kubectl get nodes
+          printf '%s' "$KILLERCODA_SSH_KEY" > ~/.kube/config
 
-      - name: Deploy to Kubernetes
+          chmod 600 ~/.kube/config
+
+
+      # --------------------------------------------------------
+      # Verify Kubernetes connection
+      # --------------------------------------------------------
+      - name: Check Kubernetes Cluster
         run: |
-          kubectl set image deployment/cicd-app \
-            cicd-app=amxnkhxn/githubactions:latest
+          kubectl cluster-info
+          kubectl get nodes
 
-          kubectl rollout restart deployment/cicd-app
-          kubectl rollout status deployment/cicd-app
+
+      # --------------------------------------------------------
+      # Apply Kubernetes manifests
+      # --------------------------------------------------------
+      - name: Apply Kubernetes Manifests
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+
+      # --------------------------------------------------------
+      # Deploy exact GitHub commit image
+      # --------------------------------------------------------
+      - name: Update Application Image
+        run: |
+          kubectl set image deployment/cici-app \
+            my-app=${{ secrets.DOC_USERNAME }}/githubactions:${{ github.sha }}
+
+
+      # --------------------------------------------------------
+      # Wait for rollout
+      # --------------------------------------------------------
+      - name: Wait for Deployment
+        run: |
+          kubectl rollout status deployment/cicd-app --timeout=180s
+
+
+      # --------------------------------------------------------
+      # Verify
+      # --------------------------------------------------------
+      - name: Verify Deployment
+        run: |
+          kubectl get deployment cicd-app
+          kubectl get pods -l app=cicd-app
+          kubectl get service cicd-service
